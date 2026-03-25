@@ -21,8 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -161,44 +161,47 @@ fun ReadingsScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                item { Spacer(modifier = Modifier.height(2.dp)) }
                 items(state.readingGroups, key = { it.date.toEpochDay() }) { group ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    group.date.format(dateFormatter),
-                                    style = MaterialTheme.typography.titleSmall
-                                )
-                                IconButton(
-                                    onClick = { viewModel.deleteReading(group.date) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            group.date.format(dateFormatter),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Column(modifier = Modifier.weight(2f)) {
                             group.readings.forEach { reading ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(reading.meterName)
-                                    Text("${String.format("%.1f", reading.reading)} kWh")
+                                    Text(reading.meterName, style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        "${String.format("%.1f", reading.reading)} kWh",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                             }
                         }
+                        IconButton(
+                            onClick = { viewModel.deleteReading(group.date) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
+                    HorizontalDivider()
                 }
                 item { Spacer(modifier = Modifier.height(80.dp)) }
             }
