@@ -108,6 +108,25 @@ fun OverviewScreen(
                     }
                 }
 
+                // Estimated today card
+                if (state.estimatedTodayConsumptionKwh != null) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Estimated Today", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "${String.format("%.1f", state.estimatedTodayConsumptionKwh)} kWh",
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            val dataNote = state.dataAsOfDate?.let { " (data as of ${it.format(dateFormatter)})" } ?: ""
+                            Text(
+                                "extrapolated from contract start$dataNote",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
                 // Current month cost
                 if (state.hasData) {
                     val diffColor = if (state.monthlyInstallment >= state.currentMonthCostEur)

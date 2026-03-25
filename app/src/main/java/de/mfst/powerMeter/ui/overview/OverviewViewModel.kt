@@ -15,16 +15,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 
 data class MeterOverview(
     val meterName: String,
     val latestReading: Double?,
-    val consumptionKwh: Double?
+    val latestReadingDate: LocalDate?,
+    val consumptionKwh: Double?,
+    val estimatedTodayKwh: Double?
 )
 
 data class OverviewUiState(
     val activeProvider: Provider? = null,
     val totalConsumptionKwh: Double = 0.0,
+    val estimatedTodayConsumptionKwh: Double? = null,
+    val dataAsOfDate: LocalDate? = null,
     val currentMonthCostEur: Double = 0.0,
     val monthlyInstallment: Double = 0.0,
     val meters: List<MeterOverview> = emptyList(),
@@ -60,10 +65,13 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
             val initialReadings = providerRepo.getInitialReadingsForProvider(provider.id)
             val initialMap = initialReadings.associateBy { it.meterId }
 
+            val today = LocalDate.now()
             var totalConsumption = 0.0
             val meterOverviews = meters.map { meter ->
                 val readings = meterReadingRepo.getReadingsForMeter(meter.id)
-                val latestReading = readings.lastOrNull()?.reading
+                val latestEntry = readings.lastOrNull()
+                val latestReading = latestEntry?.reading
+                val latestReadingDate = latestEntry?.date
                 val initialReading = initialMap[meter.id]?.initialReading
                 val consumption = if (latestReading != null && initialReading != null) {
                     (latestReading - initialReading).coerceAtLeast(0.0)
@@ -71,12 +79,29 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
 
                 if (consumption != null) totalConsumption += consumption
 
+                val estimatedTodayKwh = if (consumption != null && latestReadingDate != null) {
+                    val daysSinceStart = ChronoUnit.DAYS.between(provider.startDate, latestReadingDate)
+                    val daysToToday = ChronoUnit.DAYS.between(provider.startDate, today)
+                    if (daysSinceStart > 0 && daysToToday >= 0) {
+                        consumption / daysSinceStart * daysToToday
+                    } else {
+                        consumption
+                    }
+                } else null
+
                 MeterOverview(
                     meterName = meter.name,
                     latestReading = latestReading,
-                    consumptionKwh = consumption
+                    latestReadingDate = latestReadingDate,
+                    consumptionKwh = consumption,
+                    estimatedTodayKwh = estimatedTodayKwh
                 )
             }
+
+            val estimatedTodayTotal = if (meterOverviews.all { it.estimatedTodayKwh != null })
+                meterOverviews.sumOf { it.estimatedTodayKwh!! }
+            else null
+            val dataAsOfDate = meterOverviews.mapNotNull { it.latestReadingDate }.maxOrNull()
 
             // Calculate current month cost
             val currentMonth = YearMonth.now()
@@ -85,6 +110,8 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = OverviewUiState(
                 activeProvider = provider,
                 totalConsumptionKwh = totalConsumption,
+                estimatedTodayConsumptionKwh = estimatedTodayTotal,
+                dataAsOfDate = dataAsOfDate,
                 currentMonthCostEur = billResult?.totalCostEur ?: 0.0,
                 monthlyInstallment = provider.monthlyInstallment,
                 meters = meterOverviews,
