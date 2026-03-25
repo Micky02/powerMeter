@@ -8,6 +8,7 @@ import de.mfst.powerMeter.data.entity.Provider
 import de.mfst.powerMeter.data.repository.MeterReadingRepository
 import de.mfst.powerMeter.data.repository.MeterRepository
 import de.mfst.powerMeter.data.repository.ProviderRepository
+import de.mfst.powerMeter.data.repository.SpecialPaymentRepository
 import de.mfst.powerMeter.ui.bill.BillCalculator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ data class OverviewUiState(
     val totalConsumptionKwh: Double = 0.0,
     val estimatedTodayConsumptionKwh: Double? = null,
     val dataAsOfDate: LocalDate? = null,
+    val totalBalanceEur: Double? = null,
     val currentMonthCostEur: Double = 0.0,
     val monthlyInstallment: Double = 0.0,
     val meters: List<MeterOverview> = emptyList(),
@@ -42,6 +44,7 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
     private val providerRepo = ProviderRepository(db.providerDao())
     private val meterRepo = MeterRepository(db.meterDao())
     private val meterReadingRepo = MeterReadingRepository(db.meterReadingDao())
+    private val specialPaymentRepo = SpecialPaymentRepository(db.specialPaymentDao())
     private val calculator = BillCalculator(meterReadingRepo)
 
     private val _uiState = MutableStateFlow(OverviewUiState())
@@ -103,6 +106,20 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
             else null
             val dataAsOfDate = meterOverviews.mapNotNull { it.latestReadingDate }.maxOrNull()
 
+            // Calculate running balance since contract start
+            val totalBalanceEur = if (estimatedTodayTotal != null) {
+                val monthsElapsed = ChronoUnit.MONTHS.between(
+                    provider.startDate.withDayOfMonth(1),
+                    today.withDayOfMonth(1)
+                ) + 1
+                val totalCost = estimatedTodayTotal * provider.pricePerKwh +
+                        provider.monthlyBaseFee * monthsElapsed
+                val specialPayments = specialPaymentRepo.getPaymentsForProviderOnce(provider.id)
+                val totalPaid = provider.monthlyInstallment * monthsElapsed +
+                        specialPayments.sumOf { it.amountEur }
+                totalPaid - totalCost
+            } else null
+
             // Calculate current month cost
             val currentMonth = YearMonth.now()
             val billResult = calculator.calculateMonthlyBill(currentMonth, meters, provider)
@@ -112,6 +129,7 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
                 totalConsumptionKwh = totalConsumption,
                 estimatedTodayConsumptionKwh = estimatedTodayTotal,
                 dataAsOfDate = dataAsOfDate,
+                totalBalanceEur = totalBalanceEur,
                 currentMonthCostEur = billResult?.totalCostEur ?: 0.0,
                 monthlyInstallment = provider.monthlyInstallment,
                 meters = meterOverviews,

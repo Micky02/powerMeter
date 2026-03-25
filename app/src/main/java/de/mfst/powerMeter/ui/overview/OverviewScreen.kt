@@ -92,34 +92,64 @@ fun OverviewScreen(
                     }
                 }
 
-                // Total consumption card
+                // Consumption card
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Total Consumption", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "${String.format("%.1f", state.totalConsumptionKwh)} kWh",
-                            style = MaterialTheme.typography.headlineMedium
-                        )
-                        Text(
-                            "since provider start",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Total Consumption", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "${String.format("%.1f", state.totalConsumptionKwh)} kWh",
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Text(
+                                "since provider start",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (state.estimatedTodayConsumptionKwh != null) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                Text("Estimated Today", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    "${String.format("%.1f", state.estimatedTodayConsumptionKwh)} kWh",
+                                    style = MaterialTheme.typography.headlineMedium
+                                )
+                                val dataNote = state.dataAsOfDate?.let { "as of ${it.format(dateFormatter)}" } ?: ""
+                                Text(
+                                    dataNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Estimated today card
-                if (state.estimatedTodayConsumptionKwh != null) {
+                // Running balance card
+                val balance = state.totalBalanceEur
+                if (balance != null) {
+                    val balanceColor = if (balance >= 0)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.error
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Estimated Today", style = MaterialTheme.typography.labelMedium)
+                            Text("Running Balance", style = MaterialTheme.typography.labelMedium)
                             Text(
-                                "${String.format("%.1f", state.estimatedTodayConsumptionKwh)} kWh",
-                                style = MaterialTheme.typography.headlineMedium
+                                "${if (balance >= 0) "+" else ""}${String.format("%.2f", balance)} EUR",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = balanceColor
                             )
-                            val dataNote = state.dataAsOfDate?.let { " (data as of ${it.format(dateFormatter)})" } ?: ""
                             Text(
-                                "extrapolated from contract start$dataNote",
+                                if (balance >= 0) "surplus since contract start" else "deficit since contract start",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

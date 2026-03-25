@@ -7,48 +7,71 @@ import de.mfst.powerMeter.data.PowerMeterDatabase
 import de.mfst.powerMeter.data.entity.Meter
 import de.mfst.powerMeter.data.entity.Provider
 import de.mfst.powerMeter.data.entity.ProviderMeterInitialReading
+import de.mfst.powerMeter.data.entity.SpecialPayment
 import de.mfst.powerMeter.data.repository.MeterRepository
 import de.mfst.powerMeter.data.repository.ProviderRepository
+import de.mfst.powerMeter.data.repository.SpecialPaymentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 data class ProviderUiState(
     val providers: List<Provider> = emptyList(),
     val meters: List<Meter> = emptyList(),
+    val specialPayments: List<SpecialPayment> = emptyList(),
     val showAddProviderDialog: Boolean = false,
-    val showAddMeterDialog: Boolean = false
+    val showAddMeterDialog: Boolean = false,
+    val showAddPaymentDialog: Boolean = false
 )
 
 class ProviderViewModel(application: Application) : AndroidViewModel(application) {
     private val db = PowerMeterDatabase.getInstance(application)
     private val meterRepo = MeterRepository(db.meterDao())
     private val providerRepo = ProviderRepository(db.providerDao())
+    private val specialPaymentRepo = SpecialPaymentRepository(db.specialPaymentDao())
 
     private val _showAddProviderDialog = MutableStateFlow(false)
     private val _showAddMeterDialog = MutableStateFlow(false)
+    private val _showAddPaymentDialog = MutableStateFlow(false)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val specialPaymentsFlow = providerRepo.getActiveProvider()
+        .flatMapLatest { provider ->
+            if (provider != null) specialPaymentRepo.getPaymentsForProvider(provider.id)
+            else flowOf(emptyList())
+        }
 
     val uiState: StateFlow<ProviderUiState> = combine(
         providerRepo.getAllProviders(),
         meterRepo.getAllMeters(),
         _showAddProviderDialog,
-        _showAddMeterDialog
-    ) { providers, meters, showProvider, showMeter ->
+        _showAddMeterDialog,
+        specialPaymentsFlow
+    ) { providers, meters, showProvider, showMeter, payments ->
         ProviderUiState(
             providers = providers,
             meters = meters,
+            specialPayments = payments,
             showAddProviderDialog = showProvider,
             showAddMeterDialog = showMeter
         )
+    }.combine(_showAddPaymentDialog) { state, showPayment ->
+        state.copy(showAddPaymentDialog = showPayment)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProviderUiState())
 
     fun showAddProviderDialog() { _showAddProviderDialog.value = true }
     fun dismissAddProviderDialog() { _showAddProviderDialog.value = false }
     fun showAddMeterDialog() { _showAddMeterDialog.value = true }
     fun dismissAddMeterDialog() { _showAddMeterDialog.value = false }
+    fun showAddPaymentDialog() { _showAddPaymentDialog.value = true }
+    fun dismissAddPaymentDialog() { _showAddPaymentDialog.value = false }
 
     fun addMeter(name: String) {
         viewModelScope.launch {
@@ -77,6 +100,21 @@ class ProviderViewModel(application: Application) : AndroidViewModel(application
             }
             providerRepo.switchProvider(provider, readings)
             _showAddProviderDialog.value = false
+        }
+    }
+
+    fun addSpecialPayment(providerId: Long, date: LocalDate, amountEur: Double, note: String) {
+        viewModelScope.launch {
+            specialPaymentRepo.insert(
+                SpecialPayment(providerId = providerId, date = date, amountEur = amountEur, note = note)
+            )
+            _showAddPaymentDialog.value = false
+        }
+    }
+
+    fun deleteSpecialPayment(payment: SpecialPayment) {
+        viewModelScope.launch {
+            specialPaymentRepo.delete(payment)
         }
     }
 }
