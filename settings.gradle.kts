@@ -24,4 +24,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "powerMeter"
 include(":app")
+<<<<<<< HEAD
  
+=======
+>>>>>>> remotes/origin/claude/stupefied-bell
