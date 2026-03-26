@@ -26,6 +26,13 @@ data class MeterOverview(
     val estimatedTodayKwh: Double?
 )
 
+data class MonthlyDataPoint(
+    val yearMonth: YearMonth,
+    val consumptionKwh: Double,
+    val costEur: Double,
+    val isEstimated: Boolean
+)
+
 data class OverviewUiState(
     val activeProvider: Provider? = null,
     val totalConsumptionKwh: Double = 0.0,
@@ -35,6 +42,7 @@ data class OverviewUiState(
     val currentMonthCostEur: Double = 0.0,
     val monthlyInstallment: Double = 0.0,
     val meters: List<MeterOverview> = emptyList(),
+    val monthlyData: List<MonthlyDataPoint> = emptyList(),
     val hasProvider: Boolean = false,
     val hasData: Boolean = false
 )
@@ -120,9 +128,28 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
                 totalPaid - totalCost
             } else null
 
-            // Calculate current month cost
+            // Build monthly data series for the chart
             val currentMonth = YearMonth.now()
-            val billResult = calculator.calculateMonthlyBill(currentMonth, meters, provider)
+            val monthlyData = mutableListOf<MonthlyDataPoint>()
+            var m = YearMonth.from(provider.startDate)
+            while (!m.isAfter(currentMonth)) {
+                val bill = calculator.calculateMonthlyBill(m, meters, provider)
+                if (bill != null) {
+                    monthlyData.add(
+                        MonthlyDataPoint(
+                            yearMonth = m,
+                            consumptionKwh = bill.consumptionKwh,
+                            costEur = bill.totalCostEur,
+                            isEstimated = m == currentMonth
+                        )
+                    )
+                }
+                m = m.plusMonths(1)
+            }
+
+            val billResult = monthlyData.lastOrNull { !it.isEstimated }
+                ?.let { calculator.calculateMonthlyBill(it.yearMonth, meters, provider) }
+                ?: monthlyData.lastOrNull()?.let { calculator.calculateMonthlyBill(it.yearMonth, meters, provider) }
 
             _uiState.value = OverviewUiState(
                 activeProvider = provider,
@@ -130,11 +157,12 @@ class OverviewViewModel(application: Application) : AndroidViewModel(application
                 estimatedTodayConsumptionKwh = estimatedTodayTotal,
                 dataAsOfDate = dataAsOfDate,
                 totalBalanceEur = totalBalanceEur,
-                currentMonthCostEur = billResult?.totalCostEur ?: 0.0,
+                currentMonthCostEur = monthlyData.lastOrNull()?.costEur ?: 0.0,
                 monthlyInstallment = provider.monthlyInstallment,
                 meters = meterOverviews,
+                monthlyData = monthlyData,
                 hasProvider = true,
-                hasData = billResult != null
+                hasData = monthlyData.isNotEmpty()
             )
         }
     }

@@ -1,5 +1,6 @@
 package de.mfst.powerMeter.ui.overview
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -21,9 +23,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.format.DateTimeFormatter
 
@@ -197,34 +206,44 @@ fun OverviewScreen(
                     }
                 }
 
-                // Per-meter breakdown
-                if (state.meters.isNotEmpty()) {
-                    Text("Meters", style = MaterialTheme.typography.titleSmall)
-                    state.meters.forEach { meter ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(meter.meterName, style = MaterialTheme.typography.titleSmall)
+                // Monthly chart
+                if (state.monthlyData.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Monthly History", style = MaterialTheme.typography.labelMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Legend
+                            val primaryColor = MaterialTheme.colorScheme.primary
+                            val tertiaryColor = MaterialTheme.colorScheme.tertiary
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text("Latest Reading")
-                                    Text(
-                                        meter.latestReading?.let { "${String.format("%.1f", it)} kWh" }
-                                            ?: "No data"
-                                    )
+                                    Canvas(modifier = Modifier.size(10.dp)) {
+                                        drawRect(color = primaryColor)
+                                    }
+                                    Text("kWh", style = MaterialTheme.typography.labelSmall)
                                 }
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text("Consumption")
-                                    Text(
-                                        meter.consumptionKwh?.let { "${String.format("%.1f", it)} kWh" }
-                                            ?: "No data"
-                                    )
+                                    Canvas(modifier = Modifier.size(10.dp)) {
+                                        drawCircle(color = tertiaryColor)
+                                    }
+                                    Text("EUR", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                            ConsumptionCostChart(
+                                data = state.monthlyData,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                            )
                         }
                     }
                 }
@@ -233,3 +252,101 @@ fun OverviewScreen(
         }
     }
 }
+
+@Composable
+private fun ConsumptionCostChart(
+    data: List<MonthlyDataPoint>,
+    modifier: Modifier = Modifier
+) {
+    if (data.isEmpty()) return
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(fontSize = 9.sp, color = labelColor)
+
+    val maxConsumption = data.maxOf { it.consumptionKwh }.coerceAtLeast(0.001)
+    val maxCost = data.maxOf { it.costEur }.coerceAtLeast(0.001)
+
+    val monthFmt = remember { DateTimeFormatter.ofPattern("MMM") }
+    val monthYearFmt = remember { DateTimeFormatter.ofPattern("MMM\nyy") }
+
+    Canvas(modifier = modifier) {
+        val lm = 44.dp.toPx()
+        val rm = 48.dp.toPx()
+        val bm = 30.dp.toPx()
+        val tm = 4.dp.toPx()
+
+        val cw = size.width - lm - rm
+        val ch = size.height - bm - tm
+
+        val n = data.size
+        val slotW = cw / n
+        val barW = (slotW * 0.55f).coerceAtLeast(3.dp.toPx())
+
+        // Grid lines + y-axis labels
+        for (i in 0..4) {
+            val frac = i / 4f
+            val y = tm + ch * (1f - frac)
+
+            drawLine(gridColor, Offset(lm, y), Offset(lm + cw, y), 0.5.dp.toPx())
+
+            val leftLabel = formatChartValue(maxConsumption * frac)
+            val leftM = textMeasurer.measure(leftLabel, labelStyle)
+            drawText(leftM, topLeft = Offset(lm - leftM.size.width - 3.dp.toPx(), y - leftM.size.height / 2f))
+
+            val rightLabel = formatChartValue(maxCost * frac)
+            val rightM = textMeasurer.measure(rightLabel, labelStyle)
+            drawText(rightM, topLeft = Offset(lm + cw + 3.dp.toPx(), y - rightM.size.height / 2f))
+        }
+
+        val labelInterval = when {
+            n <= 12 -> 1
+            n <= 24 -> 2
+            else -> 3
+        }
+
+        val linePoints = mutableListOf<Offset>()
+
+        data.forEachIndexed { idx, point ->
+            val cx = lm + slotW * idx + slotW / 2f
+
+            // Consumption bar
+            val barH = (point.consumptionKwh / maxConsumption * ch).toFloat().coerceAtLeast(0f)
+            drawRect(
+                color = if (point.isEstimated) primaryColor.copy(alpha = 0.35f) else primaryColor,
+                topLeft = Offset(cx - barW / 2f, tm + ch - barH),
+                size = Size(barW, barH)
+            )
+
+            // Cost line point
+            val cy = tm + ch * (1f - (point.costEur / maxCost).toFloat()).coerceIn(0f, 1f)
+            linePoints.add(Offset(cx, cy))
+
+            // X-axis label
+            if (idx % labelInterval == 0) {
+                val showYear = idx == 0 || point.yearMonth.monthValue == 1
+                val label = if (showYear)
+                    point.yearMonth.format(monthYearFmt)
+                else
+                    point.yearMonth.format(monthFmt)
+                val m = textMeasurer.measure(label, labelStyle)
+                drawText(m, topLeft = Offset(cx - m.size.width / 2f, tm + ch + 3.dp.toPx()))
+            }
+        }
+
+        // Cost line
+        for (i in 0 until linePoints.size - 1) {
+            drawLine(tertiaryColor, linePoints[i], linePoints[i + 1], 2.dp.toPx())
+        }
+        linePoints.forEach { pt ->
+            drawCircle(tertiaryColor, 3.dp.toPx(), pt)
+        }
+    }
+}
+
+private fun formatChartValue(value: Double): String =
+    if (value < 10.0) String.format("%.1f", value) else String.format("%.0f", value)
